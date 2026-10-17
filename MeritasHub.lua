@@ -1,10 +1,10 @@
--- Meritas Hub | Versión Optimizada (Menos Lag)
+-- Meritas Hub | Versión Optimizada + AutoShoot Inteligente + Solo con Arma
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "M E R I T A S   H U B",
    LoadingTitle = "Iniciando Sistema Cuántico...",
-   LoadingSubtitle = "v3.3 - Optimizado",
+   LoadingSubtitle = "v3.5 - Solo con Arma",
    ConfigurationSaving = {
       Enabled = false,
       FolderName = "MeritasHub",
@@ -34,7 +34,7 @@ local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 --------------------------------------------------------------------------------
--- 1. ESP (Optimizado)
+-- 1. ESP
 --------------------------------------------------------------------------------
 TabAdmin:CreateSection("Sistemas Visuales")
 
@@ -67,14 +67,12 @@ local function toggleESP(state)
 
     if not state then return end
 
-    -- Jugadores
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer and player.Character then
             addHighlight(player.Character, false)
         end
     end
 
-    -- NPCs (solo una vez al activar)
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("Head") then
             local isPlayerChar = false
@@ -116,7 +114,6 @@ local function toggleFly(state)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not hrp then return end
 
-    -- Limpiar
     if flyConnection then
         flyConnection:Disconnect()
         flyConnection = nil
@@ -178,20 +175,25 @@ TabAdmin:CreateToggle({
 })
 
 --------------------------------------------------------------------------------
--- 3. AIMBOT + AUTO-SHOOT (Optimizado)
+-- 3. AIMBOT + AUTO-SHOOT (Solo funciona con arma equipada)
 --------------------------------------------------------------------------------
 TabAdmin:CreateSection("Módulos de Combate")
 
 local aimbotEnabled = false
 local autoShootEnabled = false
 
--- Cache de targets (se actualiza cada 0.25s en vez de cada frame)
 local cachedTarget = nil
 local lastTargetUpdate = 0
 
+local function hasWeapon()
+    local char = localPlayer.Character
+    if not char then return false end
+    return char:FindFirstChildOfClass("Tool") ~= nil
+end
+
 local function updateClosestTarget()
     local closest = nil
-    local shortest = 120 -- FOV máximo en píxeles (puedes bajarlo)
+    local shortest = 120
 
     local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
@@ -213,7 +215,7 @@ local function updateClosestTarget()
         end
     end
 
-    -- NPCs (solo busca en los hijos directos de workspace + algunas carpetas comunes)
+    -- NPCs
     local placesToSearch = {workspace}
     for _, name in ipairs({"NPCs", "Mobs", "Enemies", "Zombies", "Bots", "Characters"}) do
         local folder = workspace:FindFirstChild(name)
@@ -228,7 +230,6 @@ local function updateClosestTarget()
                 local head = obj:FindFirstChild("Head")
                 local humanoid = obj:FindFirstChildOfClass("Humanoid")
                 if head and humanoid and humanoid.Health > 0 then
-                    -- Evitar personajes de jugadores
                     local isPlayer = false
                     for _, p in ipairs(Players:GetPlayers()) do
                         if p.Character == obj then
@@ -254,11 +255,14 @@ local function updateClosestTarget()
     cachedTarget = closest
 end
 
--- Aimbot (ligero)
+-- Aimbot (solo si tiene arma)
 RunService.RenderStepped:Connect(function()
     if not aimbotEnabled then return end
+    if not hasWeapon() then 
+        cachedTarget = nil
+        return 
+    end
 
-    -- Actualizar target solo cada 0.2 segundos
     if tick() - lastTargetUpdate > 0.2 then
         updateClosestTarget()
         lastTargetUpdate = tick()
@@ -269,32 +273,53 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Auto-Disparo
+-- Auto-Disparo Inteligente (solo si tiene arma + objetivo + sin paredes)
 task.spawn(function()
     while true do
         task.wait(0.04)
-        if autoShootEnabled then
-            local char = localPlayer.Character
-            if char then
-                local tool = char:FindFirstChildOfClass("Tool")
-                if tool then
-                    pcall(function() tool:Activate() end)
+        
+        if autoShootEnabled and hasWeapon() and cachedTarget and cachedTarget.Parent then
+            local humanoid = cachedTarget.Parent:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                
+                local origin = camera.CFrame.Position
+                local direction = (cachedTarget.Position - origin).Unit * 500
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterDescendantsInstances = {localPlayer.Character}
+                raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                
+                local rayResult = workspace:Raycast(origin, direction, raycastParams)
+                
+                local canShoot = true
+                if rayResult then
+                    local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
+                    if hitModel ~= cachedTarget.Parent then
+                        canShoot = false
+                    end
                 end
 
-                -- Clic
-                pcall(function()
-                    local cx, cy = camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2
-                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                    task.wait(0.012)
-                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                end)
+                if canShoot then
+                    local char = localPlayer.Character
+                    if char then
+                        local tool = char:FindFirstChildOfClass("Tool")
+                        if tool then
+                            pcall(function() tool:Activate() end)
+                        end
 
-                -- VirtualUser backup
-                pcall(function()
-                    VirtualUser:Button1Down(Vector2.zero, camera.CFrame)
-                    task.wait(0.01)
-                    VirtualUser:Button1Up(Vector2.zero, camera.CFrame)
-                end)
+                        pcall(function()
+                            local cx, cy = camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2
+                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                            task.wait(0.012)
+                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                        end)
+
+                        pcall(function()
+                            VirtualUser:Button1Down(Vector2.zero, camera.CFrame)
+                            task.wait(0.01)
+                            VirtualUser:Button1Up(Vector2.zero, camera.CFrame)
+                        end)
+                    end
+                end
             end
         end
     end
@@ -319,4 +344,4 @@ TabAdmin:CreateToggle({
    end,
 })
 
-print("Meritas Hub Optimizado cargado")
+print("Meritas Hub v3.5 cargado - Solo funciona con arma equipada")
