@@ -1,340 +1,255 @@
--- Meritas Hub | Versión Optimizada + AutoShoot Inteligente
+-- Meritas Hub | v3.7 - Noclip + Speed
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "M E R I T A S   H U B",
    LoadingTitle = "Iniciando Sistema Cuántico...",
-   LoadingSubtitle = "v3.4 - AutoShoot Inteligente",
-   ConfigurationSaving = {
-      Enabled = false,
-      FolderName = "MeritasHub",
-      FileName = "Config"
-   },
-   Discord = {
-      Enabled = false,
-      Invite = "noinvite",
-      RememberJoins = true
-   },
+   LoadingSubtitle = "v3.7 - Noclip + Speed",
+   ConfigurationSaving = { Enabled = false },
    KeySystem = false,
    Theme = "Amethyst"
 })
 
-local TabAdmin = Window:CreateTab("Panel Cuántico", 4483362458)
+local Tab = Window:CreateTab("Panel Cuántico", 4483362458)
 
---------------------------------------------------------------------------------
--- SERVICIOS
---------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local VirtualUser = game:GetService("VirtualUser")
-
-local localPlayer = Players.LocalPlayer
-local camera = workspace.CurrentCamera
+local UIS = game:GetService("UserInputService")
+local VIM = game:GetService("VirtualInputManager")
+local VU = game:GetService("VirtualUser")
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
 --------------------------------------------------------------------------------
--- 1. ESP (Optimizado)
+-- ESP
 --------------------------------------------------------------------------------
-TabAdmin:CreateSection("Sistemas Visuales")
+Tab:CreateSection("Visuales")
 
-local espEnabled = false
-local highlights = {}
+local ESPEnabled = false
+local Highlights = {}
 
-local function clearHighlights()
-    for _, hl in pairs(highlights) do
-        if hl and hl.Parent then
-            hl:Destroy()
-        end
-    end
-    table.clear(highlights)
-end
+Tab:CreateToggle({
+    Name = "ESP (Jugadores + NPCs)",
+    CurrentValue = false,
+    Callback = function(Value)
+        ESPEnabled = Value
+        for _, h in pairs(Highlights) do if h then h:Destroy() end end
+        table.clear(Highlights)
+        if not Value then return end
 
-local function addHighlight(model, isNPC)
-    if highlights[model] then return end
-    local hl = Instance.new("Highlight")
-    hl.Name = "OwnerESP"
-    hl.FillColor = isNPC and Color3.fromRGB(255, 170, 0) or Color3.fromRGB(0, 242, 255)
-    hl.OutlineColor = Color3.fromRGB(255, 0, 128)
-    hl.FillTransparency = 0.45
-    hl.Parent = model
-    highlights[model] = hl
-end
-
-local function toggleESP(state)
-    espEnabled = state
-    clearHighlights()
-
-    if not state then return end
-
-    -- Jugadores
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            addHighlight(player.Character, false)
-        end
-    end
-
-    -- NPCs
-    for _, obj in ipairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("Head") then
-            local isPlayerChar = false
-            for _, p in ipairs(Players:GetPlayers()) do
-                if p.Character == obj then
-                    isPlayerChar = true
-                    break
-                end
-            end
-            if not isPlayerChar then
-                addHighlight(obj, true)
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LP and p.Character then
+                local h = Instance.new("Highlight")
+                h.FillColor = Color3.fromRGB(0, 242, 255)
+                h.OutlineColor = Color3.fromRGB(255, 0, 128)
+                h.FillTransparency = 0.4
+                h.Parent = p.Character
+                Highlights[p.Character] = h
             end
         end
     end
-end
-
-TabAdmin:CreateToggle({
-   Name = "Resaltar Jugadores + NPCs (ESP)",
-   CurrentValue = false,
-   Flag = "ESPFlag",
-   Callback = function(Value)
-       toggleESP(Value)
-   end,
 })
 
 --------------------------------------------------------------------------------
--- 2. FLY
+-- MOVILIDAD
 --------------------------------------------------------------------------------
-TabAdmin:CreateSection("Movilidad Avanzada")
+Tab:CreateSection("Movilidad")
 
-local flyEnabled = false
-local flyConnection = nil
+-- FLY
+local FlyEnabled = false
+local FlyConn
 
-local function toggleFly(state)
-    flyEnabled = state
-    local char = localPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if not hrp then return end
+Tab:CreateToggle({
+    Name = "Fly",
+    CurrentValue = false,
+    Callback = function(Value)
+        FlyEnabled = Value
+        local char = LP.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hrp then return end
 
-    if flyConnection then
-        flyConnection:Disconnect()
-        flyConnection = nil
+        if FlyConn then FlyConn:Disconnect() FlyConn = nil end
+        for _, v in ipairs(hrp:GetChildren()) do
+            if v.Name:find("Fly") then v:Destroy() end
+        end
+        if hum then hum.PlatformStand = false end
+        if not Value then return end
+
+        local att = Instance.new("Attachment", hrp)
+        att.Name = "FlyAtt"
+        local lv = Instance.new("LinearVelocity", hrp)
+        lv.Name = "FlyVel"
+        lv.Attachment0 = att
+        lv.MaxForce = math.huge
+        lv.RelativeTo = Enum.ActuatorRelativeTo.World
+        local ao = Instance.new("AlignOrientation", hrp)
+        ao.Name = "FlyOri"
+        ao.Attachment0 = att
+        ao.MaxTorque = math.huge
+        ao.Responsiveness = 200
+        if hum then hum.PlatformStand = true end
+
+        FlyConn = RunService.RenderStepped:Connect(function()
+            if not FlyEnabled or not hrp.Parent then return end
+            local dir = Vector3.zero
+            if UIS:IsKeyDown(Enum.KeyCode.W) then dir += Camera.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= Camera.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= Camera.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then dir += Camera.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.yAxis end
+            if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.yAxis end
+            lv.VectorVelocity = dir.Magnitude > 0 and dir.Unit * 55 or Vector3.zero
+            ao.CFrame = Camera.CFrame
+        end)
     end
-    for _, v in ipairs(hrp:GetChildren()) do
-        if v.Name == "FlyVelocity" or v.Name == "FlyOrientation" or v.Name == "FlyAttachment" then
-            v:Destroy()
+})
+
+-- NOCLIP
+local NoclipEnabled = false
+local NoclipConn
+
+Tab:CreateToggle({
+    Name = "Noclip (Atravesar Paredes)",
+    CurrentValue = false,
+    Callback = function(Value)
+        NoclipEnabled = Value
+        if NoclipConn then NoclipConn:Disconnect() NoclipConn = nil end
+        if not Value then return end
+
+        NoclipConn = RunService.Stepped:Connect(function()
+            if not NoclipEnabled then return end
+            local char = LP.Character
+            if char then
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    end
+})
+
+-- SPEED
+local SpeedEnabled = false
+local SpeedValue = 30 -- velocidad (puedes cambiar este número)
+local DefaultSpeed = 16
+local SpeedConn
+
+Tab:CreateToggle({
+    Name = "Speed (Correr Rápido)",
+    CurrentValue = false,
+    Callback = function(Value)
+        SpeedEnabled = Value
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
+        if SpeedConn then SpeedConn:Disconnect() SpeedConn = nil end
+        
+        if Value and hum then
+            hum.WalkSpeed = SpeedValue
+            SpeedConn = RunService.Heartbeat:Connect(function()
+                if SpeedEnabled and hum and hum.Parent then
+                    hum.WalkSpeed = SpeedValue
+                end
+            end)
+        elseif hum then
+            hum.WalkSpeed = DefaultSpeed
         end
     end
-    if humanoid then humanoid.PlatformStand = false end
-
-    if not state then return end
-
-    local att = Instance.new("Attachment")
-    att.Name = "FlyAttachment"
-    att.Parent = hrp
-
-    local lv = Instance.new("LinearVelocity")
-    lv.Name = "FlyVelocity"
-    lv.Attachment0 = att
-    lv.MaxForce = math.huge
-    lv.VectorVelocity = Vector3.zero
-    lv.RelativeTo = Enum.ActuatorRelativeTo.World
-    lv.Parent = hrp
-
-    local ao = Instance.new("AlignOrientation")
-    ao.Name = "FlyOrientation"
-    ao.Attachment0 = att
-    ao.MaxTorque = math.huge
-    ao.Responsiveness = 200
-    ao.Parent = hrp
-
-    if humanoid then humanoid.PlatformStand = true end
-
-    flyConnection = RunService.RenderStepped:Connect(function()
-        if not flyEnabled or not hrp.Parent then return end
-        local moveDir = Vector3.zero
-        local cam = workspace.CurrentCamera
-
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.yAxis end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.yAxis end
-
-        lv.VectorVelocity = moveDir.Magnitude > 0 and moveDir.Unit * 60 or Vector3.zero
-        ao.CFrame = cam.CFrame
-    end)
-end
-
-TabAdmin:CreateToggle({
-   Name = "Propulsión Cuántica (Fly)",
-   CurrentValue = false,
-   Flag = "FlyFlag",
-   Callback = function(Value)
-       toggleFly(Value)
-   end,
 })
 
 --------------------------------------------------------------------------------
--- 3. AIMBOT + AUTO-SHOOT INTELIGENTE
+-- COMBATE
 --------------------------------------------------------------------------------
-TabAdmin:CreateSection("Módulos de Combate")
+Tab:CreateSection("Combate")
 
-local aimbotEnabled = false
-local autoShootEnabled = false
+local Aimbot = false
+local AutoShoot = false
+local Target = nil
 
-local cachedTarget = nil
-local lastTargetUpdate = 0
-
-local function updateClosestTarget()
-    local closest = nil
-    local shortest = 120 -- FOV en píxeles
-
-    local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-
-    -- Jugadores
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= localPlayer and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-            if head and humanoid and humanoid.Health > 0 then
-                local pos, onScreen = camera:WorldToViewportPoint(head.Position)
-                if onScreen then
-                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if dist < shortest then
-                        shortest = dist
-                        closest = head
-                    end
-                end
-            end
-        end
-    end
-
-    -- NPCs
-    local placesToSearch = {workspace}
-    for _, name in ipairs({"NPCs", "Mobs", "Enemies", "Zombies", "Bots", "Characters"}) do
-        local folder = workspace:FindFirstChild(name)
-        if folder then
-            table.insert(placesToSearch, folder)
-        end
-    end
-
-    for _, place in ipairs(placesToSearch) do
-        for _, obj in ipairs(place:GetChildren()) do
-            if obj:IsA("Model") then
-                local head = obj:FindFirstChild("Head")
-                local humanoid = obj:FindFirstChildOfClass("Humanoid")
-                if head and humanoid and humanoid.Health > 0 then
-                    local isPlayer = false
-                    for _, p in ipairs(Players:GetPlayers()) do
-                        if p.Character == obj then
-                            isPlayer = true
-                            break
-                        end
-                    end
-                    if not isPlayer then
-                        local pos, onScreen = camera:WorldToViewportPoint(head.Position)
-                        if onScreen then
-                            local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                            if dist < shortest then
-                                shortest = dist
-                                closest = head
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    cachedTarget = closest
+local function hasWeapon()
+    local char = LP.Character
+    return char and char:FindFirstChildOfClass("Tool") ~= nil
 end
 
--- Aimbot
+local function GetClosest()
+    local closest, dist = nil, 130
+    local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and p.Character and p.Character:FindFirstChild("Head") then
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then
+                local pos, vis = Camera:WorldToViewportPoint(p.Character.Head.Position)
+                if vis then
+                    local mag = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if mag < dist then
+                        dist = mag
+                        closest = p.Character.Head
+                    end
+                end
+            end
+        end
+    end
+    return closest
+end
+
 RunService.RenderStepped:Connect(function()
-    if not aimbotEnabled then return end
-
-    if tick() - lastTargetUpdate > 0.2 then
-        updateClosestTarget()
-        lastTargetUpdate = tick()
+    if not Aimbot or not hasWeapon() then 
+        Target = nil
+        return 
     end
 
-    if cachedTarget and cachedTarget.Parent then
-        camera.CFrame = CFrame.new(camera.CFrame.Position, cachedTarget.Position)
+    Target = GetClosest()
+    if Target then
+        Camera.CFrame = CFrame.new(Camera.CFrame.Position, Target.Position)
     end
 end)
 
--- Auto-Disparo Inteligente (solo si hay objetivo y no hay paredes)
 task.spawn(function()
     while true do
-        task.wait(0.04)
-        
-        if autoShootEnabled and cachedTarget and cachedTarget.Parent then
-            local humanoid = cachedTarget.Parent:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                
-                -- Raycast para detectar paredes
-                local origin = camera.CFrame.Position
-                local direction = (cachedTarget.Position - origin).Unit * 500
-                local raycastParams = RaycastParams.new()
-                raycastParams.FilterDescendantsInstances = {localPlayer.Character}
-                raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-                
-                local rayResult = workspace:Raycast(origin, direction, raycastParams)
-                
-                local canShoot = true
-                if rayResult then
-                    local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
-                    if hitModel ~= cachedTarget.Parent then
-                        canShoot = false -- Hay pared
-                    end
+        task.wait(0.045)
+        if AutoShoot and Aimbot and hasWeapon() and Target and Target.Parent then
+            local char = LP.Character
+            if char then
+                local tool = char:FindFirstChildOfClass("Tool")
+                if tool then
+                    pcall(function() tool:Activate() end)
                 end
-
-                if canShoot then
-                    local char = localPlayer.Character
-                    if char then
-                        local tool = char:FindFirstChildOfClass("Tool")
-                        if tool then
-                            pcall(function() tool:Activate() end)
-                        end
-
-                        pcall(function()
-                            local cx, cy = camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2
-                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                            task.wait(0.012)
-                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                        end)
-
-                        pcall(function()
-                            VirtualUser:Button1Down(Vector2.zero, camera.CFrame)
-                            task.wait(0.01)
-                            VirtualUser:Button1Up(Vector2.zero, camera.CFrame)
-                        end)
-                    end
-                end
+                pcall(function()
+                    local cx, cy = Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2
+                    VIM:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                    task.wait(0.012)
+                    VIM:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                end)
+                pcall(function()
+                    VU:Button1Down(Vector2.zero, Camera.CFrame)
+                    task.wait(0.01)
+                    VU:Button1Up(Vector2.zero, Camera.CFrame)
+                end)
             end
         end
     end
 end)
 
-TabAdmin:CreateToggle({
-   Name = "Lock-On Orbital (Aimbot)",
-   CurrentValue = false,
-   Flag = "AimbotFlag",
-   Callback = function(Value)
-       aimbotEnabled = Value
-       if not Value then cachedTarget = nil end
-   end,
+Tab:CreateToggle({
+    Name = "Aimbot (Cabeza)",
+    CurrentValue = false,
+    Callback = function(Value)
+        Aimbot = Value
+        if not Value then Target = nil end
+    end
 })
 
-TabAdmin:CreateToggle({
-   Name = "Fuego Sincronizado (Auto-Disparo)",
-   CurrentValue = false,
-   Flag = "AutoShootFlag",
-   Callback = function(Value)
-       autoShootEnabled = Value
-   end,
+Tab:CreateToggle({
+    Name = "Auto-Disparo",
+    CurrentValue = false,
+    Callback = function(Value)
+        AutoShoot = Value
+    end
 })
 
-print("Meritas Hub v3.4 cargado - AutoShoot Inteligente")
+print("Meritas Hub v3.7 cargado | Noclip + Speed")
