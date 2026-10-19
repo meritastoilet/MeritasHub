@@ -1,367 +1,340 @@
--- Meritas Hub | v3.8 - Fix Fly / Speed / ESP / Aimbot
+-- Meritas Hub | Versión Optimizada + AutoShoot Inteligente
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "M E R I T A S   H U B",
    LoadingTitle = "Iniciando Sistema Cuántico...",
-   LoadingSubtitle = "v3.8",
-   ConfigurationSaving = { Enabled = false },
+   LoadingSubtitle = "v3.4 - AutoShoot Inteligente",
+   ConfigurationSaving = {
+      Enabled = false,
+      FolderName = "MeritasHub",
+      FileName = "Config"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "noinvite",
+      RememberJoins = true
+   },
    KeySystem = false,
    Theme = "Amethyst"
 })
 
-local Tab = Window:CreateTab("Panel Cuántico", 4483362458)
+local TabAdmin = Window:CreateTab("Panel Cuántico", 4483362458)
 
+--------------------------------------------------------------------------------
+-- SERVICIOS
+--------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UIS = game:GetService("UserInputService")
-local VIM = game:GetService("VirtualInputManager")
-local LP = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local VirtualUser = game:GetService("VirtualUser")
 
--- Siempre pedimos la cámara actual (la referencia vieja se rompe al respawnear)
-local function Cam() return workspace.CurrentCamera end
-local function GetHum()
-    local c = LP.Character
-    return c and c:FindFirstChildOfClass("Humanoid")
-end
-local function GetHRP()
-    local c = LP.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
+local localPlayer = Players.LocalPlayer
+local camera = workspace.CurrentCamera
 
 --------------------------------------------------------------------------------
--- ESP (Jugadores + NPCs)
+-- 1. ESP (Optimizado)
 --------------------------------------------------------------------------------
-Tab:CreateSection("Visuales")
+TabAdmin:CreateSection("Sistemas Visuales")
 
-local ESPEnabled = false
-local ESPLoopId = 0
-local Highlights = {}
+local espEnabled = false
+local highlights = {}
 
-local function removeHighlight(model)
-    local h = Highlights[model]
-    if h then h:Destroy() end
-    Highlights[model] = nil
-end
-
-local function addHighlight(model, fill, outline)
-    if Highlights[model] then return end
-    local h = Instance.new("Highlight")
-    h.Adornee = model
-    h.FillColor = fill
-    h.OutlineColor = outline
-    h.FillTransparency = 0.4
-    h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    h.Parent = model
-    Highlights[model] = h
-end
-
-local function clearESP()
-    for model in pairs(Highlights) do removeHighlight(model) end
-end
-
-local function scanESP()
-    -- limpiar los que ya no existen
-    for model in pairs(Highlights) do
-        if not model.Parent then removeHighlight(model) end
+local function clearHighlights()
+    for _, hl in pairs(highlights) do
+        if hl and hl.Parent then
+            hl:Destroy()
+        end
     end
+    table.clear(highlights)
+end
 
-    -- jugadores
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p ~= LP and p.Character then
-            addHighlight(p.Character, Color3.fromRGB(0, 242, 255), Color3.fromRGB(255, 0, 128))
+local function addHighlight(model, isNPC)
+    if highlights[model] then return end
+    local hl = Instance.new("Highlight")
+    hl.Name = "OwnerESP"
+    hl.FillColor = isNPC and Color3.fromRGB(255, 170, 0) or Color3.fromRGB(0, 242, 255)
+    hl.OutlineColor = Color3.fromRGB(255, 0, 128)
+    hl.FillTransparency = 0.45
+    hl.Parent = model
+    highlights[model] = hl
+end
+
+local function toggleESP(state)
+    espEnabled = state
+    clearHighlights()
+
+    if not state then return end
+
+    -- Jugadores
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            addHighlight(player.Character, false)
         end
     end
 
-    -- NPCs (modelos con Humanoid que no son jugadores)
-    for _, d in ipairs(workspace:GetDescendants()) do
-        if d:IsA("Humanoid") then
-            local model = d.Parent
-            if model and model:IsA("Model")
-                and model ~= LP.Character
-                and not Players:GetPlayerFromCharacter(model) then
-                addHighlight(model, Color3.fromRGB(255, 200, 0), Color3.fromRGB(255, 80, 0))
+    -- NPCs
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("Head") then
+            local isPlayerChar = false
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p.Character == obj then
+                    isPlayerChar = true
+                    break
+                end
+            end
+            if not isPlayerChar then
+                addHighlight(obj, true)
             end
         end
     end
 end
 
-Tab:CreateToggle({
-    Name = "ESP (Jugadores + NPCs)",
-    CurrentValue = false,
-    Callback = function(Value)
-        ESPEnabled = Value
-        ESPLoopId += 1
-        clearESP()
-        if not Value then return end
-
-        local myId = ESPLoopId
-        task.spawn(function()
-            while ESPEnabled and ESPLoopId == myId do
-                pcall(scanESP)
-                task.wait(1.5)
-            end
-        end)
-    end
+TabAdmin:CreateToggle({
+   Name = "Resaltar Jugadores + NPCs (ESP)",
+   CurrentValue = false,
+   Flag = "ESPFlag",
+   Callback = function(Value)
+       toggleESP(Value)
+   end,
 })
 
 --------------------------------------------------------------------------------
--- MOVILIDAD
+-- 2. FLY
 --------------------------------------------------------------------------------
-Tab:CreateSection("Movilidad")
+TabAdmin:CreateSection("Movilidad Avanzada")
 
--- FLY ------------------------------------------------------------------------
-local FlyEnabled = false
-local FlySpeed = 55
-local FlyConn
+local flyEnabled = false
+local flyConnection = nil
 
-local function stopFly()
-    if FlyConn then FlyConn:Disconnect() FlyConn = nil end
-    local hrp = GetHRP()
-    if hrp then
-        for _, v in ipairs(hrp:GetChildren()) do
-            if v.Name:find("Fly") then v:Destroy() end
-        end
-    end
-    local hum = GetHum()
-    if hum then hum.PlatformStand = false end
-end
-
-local function startFly()
-    stopFly()
-    local hrp, hum = GetHRP(), GetHum()
+local function toggleFly(state)
+    flyEnabled = state
+    local char = localPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not hrp then return end
 
+    if flyConnection then
+        flyConnection:Disconnect()
+        flyConnection = nil
+    end
+    for _, v in ipairs(hrp:GetChildren()) do
+        if v.Name == "FlyVelocity" or v.Name == "FlyOrientation" or v.Name == "FlyAttachment" then
+            v:Destroy()
+        end
+    end
+    if humanoid then humanoid.PlatformStand = false end
+
+    if not state then return end
+
     local att = Instance.new("Attachment")
-    att.Name = "FlyAtt"
+    att.Name = "FlyAttachment"
     att.Parent = hrp
 
     local lv = Instance.new("LinearVelocity")
-    lv.Name = "FlyVel"
+    lv.Name = "FlyVelocity"
     lv.Attachment0 = att
     lv.MaxForce = math.huge
-    -- ESTE era el error: sin esto LinearVelocity ignora VectorVelocity
-    lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
-    lv.RelativeTo = Enum.ActuatorRelativeTo.World
     lv.VectorVelocity = Vector3.zero
+    lv.RelativeTo = Enum.ActuatorRelativeTo.World
     lv.Parent = hrp
 
     local ao = Instance.new("AlignOrientation")
-    ao.Name = "FlyOri"
+    ao.Name = "FlyOrientation"
     ao.Attachment0 = att
-    -- Sin esto necesita un Attachment1 y no hace nada
-    ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
     ao.MaxTorque = math.huge
     ao.Responsiveness = 200
     ao.Parent = hrp
 
-    if hum then hum.PlatformStand = true end
+    if humanoid then humanoid.PlatformStand = true end
 
-    FlyConn = RunService.RenderStepped:Connect(function()
-        if not FlyEnabled or not hrp.Parent then return end
-        local cam = Cam()
-        local dir = Vector3.zero
-        if UIS:IsKeyDown(Enum.KeyCode.W) then dir += cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.S) then dir -= cam.CFrame.LookVector end
-        if UIS:IsKeyDown(Enum.KeyCode.A) then dir -= cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.D) then dir += cam.CFrame.RightVector end
-        if UIS:IsKeyDown(Enum.KeyCode.Space) then dir += Vector3.yAxis end
-        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then dir -= Vector3.yAxis end
-        lv.VectorVelocity = dir.Magnitude > 0 and dir.Unit * FlySpeed or Vector3.zero
+    flyConnection = RunService.RenderStepped:Connect(function()
+        if not flyEnabled or not hrp.Parent then return end
+        local moveDir = Vector3.zero
+        local cam = workspace.CurrentCamera
+
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir += cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir -= cam.CFrame.LookVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir -= cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir += cam.CFrame.RightVector end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir += Vector3.yAxis end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir -= Vector3.yAxis end
+
+        lv.VectorVelocity = moveDir.Magnitude > 0 and moveDir.Unit * 60 or Vector3.zero
         ao.CFrame = cam.CFrame
     end)
 end
 
-Tab:CreateToggle({
-    Name = "Fly (WASD + Espacio / Shift)",
-    CurrentValue = false,
-    Callback = function(Value)
-        FlyEnabled = Value
-        if Value then startFly() else stopFly() end
-    end
+TabAdmin:CreateToggle({
+   Name = "Propulsión Cuántica (Fly)",
+   CurrentValue = false,
+   Flag = "FlyFlag",
+   Callback = function(Value)
+       toggleFly(Value)
+   end,
 })
-
-Tab:CreateSlider({
-    Name = "Velocidad de Fly",
-    Range = {20, 200},
-    Increment = 5,
-    CurrentValue = 55,
-    Callback = function(v) FlySpeed = v end
-})
-
--- NOCLIP ---------------------------------------------------------------------
-local NoclipEnabled = false
-local NoclipConn
-
-Tab:CreateToggle({
-    Name = "Noclip (Atravesar Paredes)",
-    CurrentValue = false,
-    Callback = function(Value)
-        NoclipEnabled = Value
-        if NoclipConn then NoclipConn:Disconnect() NoclipConn = nil end
-        if not Value then return end
-
-        NoclipConn = RunService.Stepped:Connect(function()
-            local char = LP.Character
-            if char then
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        part.CanCollide = false
-                    end
-                end
-            end
-        end)
-    end
-})
-
--- SPEED ----------------------------------------------------------------------
-local SpeedEnabled = false
-local SpeedValue = 30
-local DefaultSpeed = 16
-
--- Una sola conexión permanente: siempre toma el Humanoid actual (sirve tras respawn)
-RunService.Heartbeat:Connect(function()
-    if not SpeedEnabled then return end
-    local hum = GetHum()
-    if hum and hum.WalkSpeed ~= SpeedValue then
-        hum.WalkSpeed = SpeedValue
-    end
-end)
-
-Tab:CreateToggle({
-    Name = "Speed (Correr Rápido)",
-    CurrentValue = false,
-    Callback = function(Value)
-        SpeedEnabled = Value
-        if not Value then
-            local hum = GetHum()
-            if hum then hum.WalkSpeed = DefaultSpeed end
-        end
-    end
-})
-
-Tab:CreateSlider({
-    Name = "Velocidad de Correr",
-    Range = {16, 150},
-    Increment = 1,
-    CurrentValue = 30,
-    Callback = function(v) SpeedValue = v end
-})
-
--- Reaplicar Fly tras respawn
-LP.CharacterAdded:Connect(function()
-    task.wait(1)
-    if FlyEnabled then startFly() end
-end)
 
 --------------------------------------------------------------------------------
--- COMBATE
+-- 3. AIMBOT + AUTO-SHOOT INTELIGENTE
 --------------------------------------------------------------------------------
-Tab:CreateSection("Combate")
+TabAdmin:CreateSection("Módulos de Combate")
 
-local Aimbot = false
-local AutoShoot = false
-local AimRadius = 130
-local Target = nil
+local aimbotEnabled = false
+local autoShootEnabled = false
 
-local function hasWeapon()
-    local char = LP.Character
-    return char and char:FindFirstChildOfClass("Tool") ~= nil
-end
+local cachedTarget = nil
+local lastTargetUpdate = 0
 
-local TeamCheck = true
+local function updateClosestTarget()
+    local closest = nil
+    local shortest = 120 -- FOV en píxeles
 
-local function isTeammate(p)
-    return LP.Team ~= nil and p.Team == LP.Team
-end
+    local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
-local function GetClosest()
-    local cam = Cam()
-    local closest, dist = nil, AimRadius
-    local center = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2)
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        local char = p.Character
-        if p ~= LP and not (TeamCheck and isTeammate(p)) and char and char:FindFirstChild("Head") then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then
-                local pos, vis = cam:WorldToViewportPoint(char.Head.Position)
-                if vis then
-                    local mag = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if mag < dist then
-                        dist = mag
-                        closest = char.Head
+    -- Jugadores
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+            if head and humanoid and humanoid.Health > 0 then
+                local pos, onScreen = camera:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if dist < shortest then
+                        shortest = dist
+                        closest = head
                     end
                 end
             end
         end
     end
-    return closest
+
+    -- NPCs
+    local placesToSearch = {workspace}
+    for _, name in ipairs({"NPCs", "Mobs", "Enemies", "Zombies", "Bots", "Characters"}) do
+        local folder = workspace:FindFirstChild(name)
+        if folder then
+            table.insert(placesToSearch, folder)
+        end
+    end
+
+    for _, place in ipairs(placesToSearch) do
+        for _, obj in ipairs(place:GetChildren()) do
+            if obj:IsA("Model") then
+                local head = obj:FindFirstChild("Head")
+                local humanoid = obj:FindFirstChildOfClass("Humanoid")
+                if head and humanoid and humanoid.Health > 0 then
+                    local isPlayer = false
+                    for _, p in ipairs(Players:GetPlayers()) do
+                        if p.Character == obj then
+                            isPlayer = true
+                            break
+                        end
+                    end
+                    if not isPlayer then
+                        local pos, onScreen = camera:WorldToViewportPoint(head.Position)
+                        if onScreen then
+                            local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                            if dist < shortest then
+                                shortest = dist
+                                closest = head
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    cachedTarget = closest
 end
 
--- Se ejecuta DESPUÉS del script de cámara de Roblox; antes éste te pisaba el CFrame
-RunService:BindToRenderStep("MeritasAim", Enum.RenderPriority.Camera.Value + 1, function()
-    if not Aimbot or not hasWeapon() then
-        Target = nil
-        return
+-- Aimbot
+RunService.RenderStepped:Connect(function()
+    if not aimbotEnabled then return end
+
+    if tick() - lastTargetUpdate > 0.2 then
+        updateClosestTarget()
+        lastTargetUpdate = tick()
     end
-    Target = GetClosest()
-    if Target then
-        local cam = Cam()
-        cam.CFrame = CFrame.new(cam.CFrame.Position, Target.Position)
+
+    if cachedTarget and cachedTarget.Parent then
+        camera.CFrame = CFrame.new(camera.CFrame.Position, cachedTarget.Position)
     end
 end)
 
+-- Auto-Disparo Inteligente (solo si hay objetivo y no hay paredes)
 task.spawn(function()
     while true do
-        task.wait(0.06)
-        if AutoShoot and Aimbot and hasWeapon() and Target and Target.Parent then
-            local tool = LP.Character and LP.Character:FindFirstChildOfClass("Tool")
-            if tool then
-                pcall(function() tool:Activate() end)
+        task.wait(0.04)
+        
+        if autoShootEnabled and cachedTarget and cachedTarget.Parent then
+            local humanoid = cachedTarget.Parent:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                
+                -- Raycast para detectar paredes
+                local origin = camera.CFrame.Position
+                local direction = (cachedTarget.Position - origin).Unit * 500
+                local raycastParams = RaycastParams.new()
+                raycastParams.FilterDescendantsInstances = {localPlayer.Character}
+                raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+                
+                local rayResult = workspace:Raycast(origin, direction, raycastParams)
+                
+                local canShoot = true
+                if rayResult then
+                    local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
+                    if hitModel ~= cachedTarget.Parent then
+                        canShoot = false -- Hay pared
+                    end
+                end
+
+                if canShoot then
+                    local char = localPlayer.Character
+                    if char then
+                        local tool = char:FindFirstChildOfClass("Tool")
+                        if tool then
+                            pcall(function() tool:Activate() end)
+                        end
+
+                        pcall(function()
+                            local cx, cy = camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2
+                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                            task.wait(0.012)
+                            VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+                        end)
+
+                        pcall(function()
+                            VirtualUser:Button1Down(Vector2.zero, camera.CFrame)
+                            task.wait(0.01)
+                            VirtualUser:Button1Up(Vector2.zero, camera.CFrame)
+                        end)
+                    end
+                end
             end
-            pcall(function()
-                local cam = Cam()
-                local cx, cy = cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2
-                VIM:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                task.wait(0.012)
-                VIM:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-            end)
         end
     end
 end)
 
-Tab:CreateToggle({
-    Name = "Aimbot (Cabeza)",
-    CurrentValue = false,
-    Callback = function(Value)
-        Aimbot = Value
-        if not Value then Target = nil end
-    end
+TabAdmin:CreateToggle({
+   Name = "Lock-On Orbital (Aimbot)",
+   CurrentValue = false,
+   Flag = "AimbotFlag",
+   Callback = function(Value)
+       aimbotEnabled = Value
+       if not Value then cachedTarget = nil end
+   end,
 })
 
-Tab:CreateSlider({
-    Name = "Radio del Aimbot (px)",
-    Range = {50, 500},
-    Increment = 10,
-    CurrentValue = 130,
-    Callback = function(v) AimRadius = v end
+TabAdmin:CreateToggle({
+   Name = "Fuego Sincronizado (Auto-Disparo)",
+   CurrentValue = false,
+   Flag = "AutoShootFlag",
+   Callback = function(Value)
+       autoShootEnabled = Value
+   end,
 })
 
-Tab:CreateToggle({
-    Name = "Ignorar mi equipo",
-    CurrentValue = true,
-    Callback = function(Value)
-        TeamCheck = Value
-    end
-})
-
-Tab:CreateToggle({
-    Name = "Auto-Disparo",
-    CurrentValue = false,
-    Callback = function(Value)
-        AutoShoot = Value
-    end
-})
-
-print("Meritas Hub v3.8 cargado")
+print("Meritas Hub v3.4 cargado - AutoShoot Inteligente")
