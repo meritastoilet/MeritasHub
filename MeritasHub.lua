@@ -337,4 +337,37 @@ TabAdmin:CreateToggle({
    end,
 })
 
-print("Meritas Hub v3.4 cargado - AutoShoot Inteligente")
+-- SPEED (versión más fuerte)
+local SpeedEnabled = false
+local SpeedValue = 35          -- <- aquí cambias la velocidad
+local DefaultSpeed = 16
+local SpeedConn
+
+Tab:CreateToggle({
+    Name = "Speed (Correr Rápido)",
+    CurrentValue = false,
+    Callback = function(Value)
+        SpeedEnabled = Value
+        local char = LP.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+        if SpeedConn then
+            SpeedConn:Disconnect()
+            SpeedConn = nil
+        end
+
+        if Value then
+            SpeedConn = RunService.RenderStepped:Connect(function()
+                local c = LP.Character
+                local h = c and c:FindFirstChildOfClass("Humanoid")
+                if h then
+                    h.WalkSpeed = SpeedValue
+                end
+            end)
+        else
+            if hum then
+                hum.WalkSpeed = DefaultSpeed
+            end
+        end
+    end
+})print("Meritas Hub v3.4 cargado - AutoShoot Inteligente")
