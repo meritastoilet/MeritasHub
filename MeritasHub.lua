@@ -1,10 +1,10 @@
--- Meritas Hub | Versión Optimizada + AutoShoot Inteligente
+-- Meritas Hub | Versión Optimizada + AutoShoot Inteligente + Solo con Arma
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "M E R I T A S   H U B",
    LoadingTitle = "Iniciando Sistema Cuántico...",
-   LoadingSubtitle = "v3.4 - AutoShoot Inteligente",
+   LoadingSubtitle = "v3.5 - Solo con Arma",
    ConfigurationSaving = {
       Enabled = false,
       FolderName = "MeritasHub",
@@ -34,7 +34,7 @@ local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 --------------------------------------------------------------------------------
--- 1. ESP (Optimizado)
+-- 1. ESP
 --------------------------------------------------------------------------------
 TabAdmin:CreateSection("Sistemas Visuales")
 
@@ -67,14 +67,12 @@ local function toggleESP(state)
 
     if not state then return end
 
-    -- Jugadores
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= localPlayer and player.Character then
             addHighlight(player.Character, false)
         end
     end
 
-    -- NPCs
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("Head") then
             local isPlayerChar = false
@@ -177,7 +175,7 @@ TabAdmin:CreateToggle({
 })
 
 --------------------------------------------------------------------------------
--- 3. AIMBOT + AUTO-SHOOT INTELIGENTE
+-- 3. AIMBOT + AUTO-SHOOT (Solo funciona con arma equipada)
 --------------------------------------------------------------------------------
 TabAdmin:CreateSection("Módulos de Combate")
 
@@ -187,9 +185,15 @@ local autoShootEnabled = false
 local cachedTarget = nil
 local lastTargetUpdate = 0
 
+local function hasWeapon()
+    local char = localPlayer.Character
+    if not char then return false end
+    return char:FindFirstChildOfClass("Tool") ~= nil
+end
+
 local function updateClosestTarget()
     local closest = nil
-    local shortest = 120 -- FOV en píxeles
+    local shortest = 120
 
     local center = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
 
@@ -251,9 +255,13 @@ local function updateClosestTarget()
     cachedTarget = closest
 end
 
--- Aimbot
+-- Aimbot (solo si tiene arma)
 RunService.RenderStepped:Connect(function()
     if not aimbotEnabled then return end
+    if not hasWeapon() then 
+        cachedTarget = nil
+        return 
+    end
 
     if tick() - lastTargetUpdate > 0.2 then
         updateClosestTarget()
@@ -265,16 +273,15 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Auto-Disparo Inteligente (solo si hay objetivo y no hay paredes)
+-- Auto-Disparo Inteligente (solo si tiene arma + objetivo + sin paredes)
 task.spawn(function()
     while true do
         task.wait(0.04)
         
-        if autoShootEnabled and cachedTarget and cachedTarget.Parent then
+        if autoShootEnabled and hasWeapon() and cachedTarget and cachedTarget.Parent then
             local humanoid = cachedTarget.Parent:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health > 0 then
                 
-                -- Raycast para detectar paredes
                 local origin = camera.CFrame.Position
                 local direction = (cachedTarget.Position - origin).Unit * 500
                 local raycastParams = RaycastParams.new()
@@ -287,7 +294,7 @@ task.spawn(function()
                 if rayResult then
                     local hitModel = rayResult.Instance:FindFirstAncestorOfClass("Model")
                     if hitModel ~= cachedTarget.Parent then
-                        canShoot = false -- Hay pared
+                        canShoot = false
                     end
                 end
 
@@ -337,4 +344,4 @@ TabAdmin:CreateToggle({
    end,
 })
 
-})print("Meritas Hub v3.4 cargado - AutoShoot Inteligente")
+print("Meritas Hub v3.5 cargado - Solo funciona con arma equipada")
